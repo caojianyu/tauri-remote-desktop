@@ -42,7 +42,7 @@ onBeforeMount(async () => {
 
 // websocket
 const initWebSocket = () => {
-  ws = new WebSocket(`wss://www.zhiyunxiang.cn/conn/${data.account.id}`);
+  ws = new WebSocket(`ws://127.0.0.1:6503/conn/${data.account.id}`);
 
   ws.onopen = () => {
     setInterval(() => {

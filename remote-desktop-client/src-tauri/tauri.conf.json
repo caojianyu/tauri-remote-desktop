@@ -14,7 +14,7 @@
     "allowlist": {
       "all": true,
       "http": {
-        "scope": ["https://www.zhiyunxiang.cn/*", "http://192.168.1.3:6503/*"]
+        "scope": ["http://127.0.0.1:6503/*"]
       }
     },
     "bundle": {
