@@ -24,14 +24,14 @@ const data = reactive({
   isShowRemoteDesktop: false,
 });
 
-const desktop = ref();
+const desktop = ref<HTMLVideoElement>();
 
 let ws: WebSocket;
 let pc: RTCPeerConnection;
 let dc: RTCDataChannel;
-let webcamStream: any;
+let webcamStream: MediaStream;
 
-let remoteDesktopDpi: any;
+let remoteDesktopDpi: Record<string, any>;
 
 onBeforeMount(async () => {
   data.account = await invoke("generate_account");
@@ -44,7 +44,7 @@ onBeforeMount(async () => {
 const initWebSocket = () => {
   ws = new WebSocket(`ws://127.0.0.1:6503/conn/${data.account.id}`);
 
-  ws.onopen = () => {
+  ws.onopen = (e: Event) => {
     setInterval(() => {
       sendToServer({
         msg_type: "heartbeat",
@@ -55,8 +55,8 @@ const initWebSocket = () => {
     }, 1000 * 60);
   };
 
-  ws.onmessage = async (e: any) => {
-    let msg = JSON.parse(e.data);
+  ws.onmessage = async (e: MessageEvent) => {
+    const msg: Record<string, any> = JSON.parse(e.data);
     switch (msg.msg_type) {
       case MessageType.VIDEO_OFFER: // Invitation and offer to chat
         handleVideoOfferMsg(msg);
@@ -76,17 +76,17 @@ const initWebSocket = () => {
     }
   };
 
-  ws.onerror = () => {
+  ws.onerror = (e: Event) => {
     console.log("conn error");
   };
 };
 
-const handleVideoOfferMsg = async (msg: any) => {
+const handleVideoOfferMsg = async (msg: Record<string, any>) => {
   data.receiverAccount.id = msg.sender;
 
   await initRTCPeerConnection();
 
-  let desc = new RTCSessionDescription(JSON.parse(msg.msg));
+  const desc = new RTCSessionDescription(JSON.parse(msg.msg));
   await pc.setRemoteDescription(desc);
 
   await pc.setLocalDescription(await pc.createAnswer());
@@ -98,13 +98,13 @@ const handleVideoOfferMsg = async (msg: any) => {
   });
 };
 
-const handleVideoAnswerMsg = async (msg: any) => {
-  let desc = new RTCSessionDescription(JSON.parse(msg.msg));
+const handleVideoAnswerMsg = async (msg: Record<string, any>) => {
+  const desc = new RTCSessionDescription(JSON.parse(msg.msg));
   await pc.setRemoteDescription(desc).catch(reportError);
 };
 
-const handleNewICECandidateMsg = async (msg: any) => {
-  let candidate = new RTCIceCandidate(JSON.parse(msg.msg));
+const handleNewICECandidateMsg = async (msg: Record<string, any>) => {
+  const candidate = new RTCIceCandidate(JSON.parse(msg.msg));
   try {
     await pc.addIceCandidate(candidate);
   } catch (err) {
@@ -112,7 +112,7 @@ const handleNewICECandidateMsg = async (msg: any) => {
   }
 };
 
-const handleRemoteDesktopRequest = async (msg: any) => {
+const handleRemoteDesktopRequest = async (msg: Record<string, any>) => {
   if (msg.msg != data.account.password) {
     console.log("password error!");
     return;
@@ -130,7 +130,7 @@ const handleRemoteDesktopRequest = async (msg: any) => {
     audio: false,
   });
 
-  webcamStream.getTracks().forEach((track: any) =>
+  webcamStream.getTracks().forEach((track: MediaStreamTrack) =>
     // pc.addTransceiver(track, { streams: [webcamStream] })
     pc.addTrack(track, webcamStream)
   );
@@ -167,7 +167,7 @@ const initRTCPeerConnection = () => {
   pc.ondatachannel = handleDataChannel;
 };
 
-const handleICECandidateEvent = (event: any) => {
+const handleICECandidateEvent = (event: RTCPeerConnectionIceEvent) => {
   if (event.candidate) {
     sendToServer({
       msg_type: MessageType.NEW_ICE_CANDIDATE,
@@ -178,23 +178,23 @@ const handleICECandidateEvent = (event: any) => {
   }
 };
 
-const handleICEConnectionStateChangeEvent = (event: any) => {
+const handleICEConnectionStateChangeEvent = (event: Event) => {
   console.log("*** ICE连接状态变为" + pc.iceConnectionState);
 };
 
-const handleICEGatheringStateChangeEvent = (event: any) => {
+const handleICEGatheringStateChangeEvent = (event: Event) => {
   console.log("*** ICE聚集状态变为" + pc.iceGatheringState);
 };
 
-const handleSignalingStateChangeEvent = (event: any) => {
+const handleSignalingStateChangeEvent = (event: Event) => {
   console.log("*** WebRTC信令状态变为: " + pc.signalingState);
 };
 
 // get data stream
-const handleTrackEvent = (event: any) => {
-  desktop.value.srcObject = event.streams[0];
+const handleTrackEvent = (event: RTCTrackEvent) => {
+  desktop.value!.srcObject = event.streams[0];
 
-  document.onkeydown = (e) => {
+  document.onkeydown = (e: KeyboardEvent) => {
     sendToClient({
       type: InputEventType.KEY_EVENT,
       data: {
@@ -204,7 +204,7 @@ const handleTrackEvent = (event: any) => {
     });
   };
 
-  document.onkeyup = (e) => {
+  document.onkeyup = (e: KeyboardEvent) => {
     sendToClient({
       type: InputEventType.KEY_EVENT,
       data: {
@@ -216,17 +216,17 @@ const handleTrackEvent = (event: any) => {
 };
 
 // p2p data channel
-const handleDataChannel = (e: any) => {
+const handleDataChannel = (e: RTCDataChannelEvent) => {
   dc = e.channel;
-  dc.onopen = () => {
+  dc.onopen = (e: Event) => {
     console.log("datachannel open");
   };
 
-  dc.onmessage = (event: any) => {
+  dc.onmessage = (event: MessageEvent) => {
     remoteDesktopDpi = JSON.parse(event.data);
   };
 
-  dc.onclose = () => {
+  dc.onclose = (e: Event) => {
     console.log("datachannel close");
   };
 };
@@ -237,7 +237,7 @@ const initRTCDataChannel = () => {
     ordered: true,
   });
 
-  dc.onopen = () => {
+  dc.onopen = (e: Event) => {
     console.log("datachannel open");
     dc.send(
       JSON.stringify({
@@ -247,8 +247,8 @@ const initRTCDataChannel = () => {
     );
   };
 
-  dc.onmessage = (event: any) => {
-    let msg = JSON.parse(event.data);
+  dc.onmessage = (event: MessageEvent) => {
+    let msg: Record<string, any> = JSON.parse(event.data);
     switch (msg.type) {
       case InputEventType.MOUSE_EVENT:
         handleMouseEvent(msg.data);
@@ -259,7 +259,7 @@ const initRTCDataChannel = () => {
     }
   };
 
-  dc.onclose = () => {
+  dc.onclose = (e: Event) => {
     console.log("datachannel close");
   };
 };
@@ -285,6 +285,11 @@ const sendOffer = async () => {
 
 // request
 const remoteDesktop = async () => {
+  if (!data.receiverAccount.id || data.receiverAccount.password) {
+    alert("请输入id和密码");
+    return;
+  }
+
   appWindow.setFullscreen(true);
 
   // show panel
@@ -312,24 +317,24 @@ const closeRemoteDesktop = async () => {
   });
 };
 
-const mouseDown = (e: any) => {
+const mouseDown = (e: MouseEvent) => {
   sendMouseEvent(e.x, e.y, mouseType(MouseStatus.MOUSE_DOWN, e.button));
 };
 
-const mouseUp = (e: any) => {
+const mouseUp = (e: MouseEvent) => {
   sendMouseEvent(e.x, e.y, mouseType(MouseStatus.MOUSE_UP, e.button));
 };
 
-const wheel = (e: any) => {
-  let type = e.wheelDelta > 0 ? WheelStatus.WHEEL_UP : WheelStatus.WHEEL_DOWN;
+const wheel = (e: WheelEvent) => {
+  let type = e.deltaY > 0 ? WheelStatus.WHEEL_UP : WheelStatus.WHEEL_DOWN;
   sendMouseEvent(e.x, e.y, type);
 };
 
-const mouseMove = (e: any) => {
+const mouseMove = (e: MouseEvent) => {
   sendMouseEvent(e.x, e.y, MouseStatus.MOUSE_MOVE);
 };
 
-const rightClick = (e: any) => {
+const rightClick = (e: MouseEvent) => {
   sendMouseEvent(e.x, e.y, MouseStatus.RIGHT_CLICK);
 };
 
@@ -338,8 +343,8 @@ const rightClick = (e: any) => {
 // send event
 const sendMouseEvent = (x: number, y: number, eventType: string) => {
   if (remoteDesktopDpi) {
-    let widthRatio = remoteDesktopDpi.width / desktop.value.clientWidth;
-    let heightRatio = remoteDesktopDpi.height / desktop.value.clientHeight;
+    let widthRatio = remoteDesktopDpi.width / desktop.value!.clientWidth;
+    let heightRatio = remoteDesktopDpi.height / desktop.value!.clientHeight;
 
     let data = {
       x: parseInt((x * widthRatio).toFixed(0)),
@@ -371,25 +376,23 @@ const mouseType = (mouseStatus: MouseStatus, button: number) => {
 
 const close = () => {
   // TODO authentication
-
-  if (desktop.value.srcObject) {
-    let tracks = desktop.value.srcObject.getTracks();
-    tracks.forEach((track: any) => track.stop());
-    desktop.value.srcObject = null;
+  if (desktop.value!.srcObject) {
+    const tracks = desktop.value!.srcObject as MediaStream;
+    tracks.getTracks().forEach((track: MediaStreamTrack) => track.stop());
+    desktop.value!.srcObject = null;
   } else {
-    webcamStream.getTracks().forEach((track: any) => track.stop());
+    webcamStream.getTracks().forEach((track: MediaStreamTrack) => track.stop());
   }
-
   // Close the peer connection
   pc.close();
 };
 
-const sendToServer = (msg: any) => {
+const sendToServer = (msg: Record<string, any>) => {
   let msgJSON = JSON.stringify(msg);
   ws.send(msgJSON);
 };
 
-const sendToClient = (msg: any) => {
+const sendToClient = (msg: Record<string, any>) => {
   let msgJSON = JSON.stringify(msg);
   dc.readyState == "open" && dc.send(msgJSON);
 };
@@ -407,34 +410,14 @@ const sendToClient = (msg: any) => {
     </div>
   </div>
   <div class="form">
-    <input
-      v-model="data.receiverAccount.id"
-      type="text"
-      placeholder="请输入对方id"
-    />
-    <input
-      v-model="data.receiverAccount.password"
-      type="text"
-      placeholder="请输入对方密码"
-    />
+    <input v-model="data.receiverAccount.id" type="text" placeholder="请输入对方id" />
+    <input v-model="data.receiverAccount.password" type="text" placeholder="请输入对方密码" />
     <button @click="remoteDesktop()">发起远程</button>
   </div>
-  <video
-    v-show="data.isShowRemoteDesktop"
-    @mousedown="mouseDown($event)"
-    @mouseup="mouseUp($event)"
-    @mousemove="mouseMove($event)"
-    @wheel="wheel($event)"
-    @contextmenu.prevent="rightClick($event)"
-    class="desktop"
-    ref="desktop"
-    autoplay
-  ></video>
-  <button
-    v-if="data.isShowRemoteDesktop"
-    class="close-btn"
-    @click="closeRemoteDesktop()"
-  >
+  <video v-show="data.isShowRemoteDesktop" @mousedown="mouseDown($event)" @mouseup="mouseUp($event)"
+    @mousemove="mouseMove($event)" @wheel="wheel($event)" @contextmenu.prevent="rightClick($event)" class="desktop"
+    ref="desktop" autoplay></video>
+  <button v-if="data.isShowRemoteDesktop" class="close-btn" @click="closeRemoteDesktop()">
     关闭
   </button>
 </template>
@@ -451,13 +434,16 @@ const sendToClient = (msg: any) => {
   align-items: center;
   border-bottom: 1px solid #252525;
   box-sizing: border-box;
-  > div {
+
+  >div {
     background: #242425;
     padding: 10px 20px;
     border-radius: 10px;
+
     p {
       line-height: 28px;
       font-size: 16px;
+
       span {
         font-size: 18px;
         font-weight: 600;
@@ -473,6 +459,7 @@ const sendToClient = (msg: any) => {
   justify-content: center;
   align-items: center;
   background: #1b1b1c;
+
   button {
     width: 280px;
     height: 34px;
