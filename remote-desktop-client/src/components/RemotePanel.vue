@@ -285,7 +285,7 @@ const sendOffer = async () => {
 
 // request
 const remoteDesktop = async () => {
-  if (!data.receiverAccount.id || data.receiverAccount.password) {
+  if (!data.receiverAccount.id || !data.receiverAccount.password) {
     alert("请输入id和密码");
     return;
   }
